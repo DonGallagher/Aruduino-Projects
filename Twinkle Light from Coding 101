@@ -1,0 +1,104 @@
+#include <Adafruit_NeoPixel.h>
+
+/*
+ * Configuration values.  Edit the #defines below to change how your lights twinkle.
+ */
+ 
+// Where is my hardware?
+#define PIXEL_PIN (4)
+// How many LEDs are on this string?  Note that this code will consume 3 bytes of RAM
+// for every LED, and some platforms have limited RAM. The DigiSpark, for example,
+// is an ATtiny85 with only 512 bytes of RAM.
+#define NUM_PIXELS (50)
+
+// Intensity at max ramp (0 to 255)
+#define RAMP_MAX (200)
+// Each pixel has a 10-in-TWINKLE_EVERY chance of twinkling every LOOP_EVERY milliseconds.
+#define TWINKLE_EVERY (10000)
+// How often to loop, in ms.  20ms = 50Hz refresh.
+#define LOOP_EVERY (20)
+
+// milliseconds to ramp up
+#define RAMP_UP (500)
+// milliseconds to ramp down
+#define RAMP_DOWN (1000)
+
+/*
+ * END CONFIGURATION.  Don't edit anything below...
+ * ...unless, you know, you're hacking something... :-)
+ */
+ 
+// How much to increment by on the ramp up
+// FIXME we're going to accumulate rounding errors with this math if we're not careful.
+// It's best if RAMP_MAX*LOOP_EVERY/RAMP_FOO is a whole number when calculated in floating point.
+// Otherwise, your ramp up and ramp down periods won't actually be what you chose above.
+#define RAMP_UP_INC (RAMP_MAX*LOOP_EVERY/RAMP_UP)
+#define RAMP_DOWN_INC (RAMP_MAX*LOOP_EVERY/RAMP_DOWN)
+
+// Where are the different colors in getPixelColor()?
+#define RED_MASK(x)     (uint8_t((x & 0x00FF0000) >> 16))
+#define GREEN_MASK(x)   (uint8_t((x & 0x0000FF00) >> 8))
+#define BLUE_MASK(x)    (uint8_t(x & 0x000000FF))
+#define UP_DOWN_FLAG    (1)
+
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+void setup() {
+  pixels.begin();
+  pixels.clear();
+  pixels.show();
+}
+
+void loop() {
+  uint32_t now = millis();
+
+  for (int i=0; i<NUM_PIXELS; i++) {
+    uint32_t color=pixels.getPixelColor(i);
+    if (color == 0) { // The pixel is currently dark and not doing anything.
+      switch (random(TWINKLE_EVERY)) {
+        case 0:
+          // Red twinkle
+          color = pixels.Color(UP_DOWN_FLAG, 0, 0);
+          break;
+        case 1:
+          // Green twinkle
+          color = pixels.Color(0, UP_DOWN_FLAG, 0);
+          break;
+        case 2:
+          // Blue twinkle
+          color = pixels.Color(0, 0, UP_DOWN_FLAG);
+          break;
+        case 3 ... 9:  // I kinda feel dirty doing it like this. Non standard C++
+          // White twinkle
+          color = pixels.Color(UP_DOWN_FLAG, UP_DOWN_FLAG, UP_DOWN_FLAG);
+          break;
+      }
+    }
+    color = pixels.Color(incColor(RED_MASK(color)), incColor(GREEN_MASK(color)), incColor(BLUE_MASK(color)));
+    pixels.setPixelColor(i, color);
+  }
+  pixels.show();
+
+  delay(LOOP_EVERY - (millis()-now));
+}
+
+uint32_t incColor(uint8_t color) {
+  if (color == 0) {
+    // Do nothing.
+  }
+  else if (color & UP_DOWN_FLAG && color < RAMP_MAX) { // Ramping up
+    // TODO handle 8 bit overflow here, if color+RAMP_UP_INC would overflow a uint8_t.
+    // Workaround because I'm lazy, make sure RAMP_MAX is at least RAMP_UP_INC less than 255
+    color += RAMP_UP_INC;
+  }
+  else if (color & UP_DOWN_FLAG && color >= RAMP_MAX) { // Hit max. Turn around and go down.
+    color -= RAMP_DOWN_INC + UP_DOWN_FLAG;  // Remove the UP/DOWN flag.
+  }
+  else if (!(color & UP_DOWN_FLAG)) { // Ramping down
+    // TODO Similarly, handle roll-under while going down. 
+    // This is only a problem is RAMP_UP_INC and RAMP_DOWN_INC don't both evenly divide RAMP_MAX
+    // where ramping up then ramping down doesn't land the color on 0.
+    color -= RAMP_DOWN_INC;
+  }
+  return color;
+}
+
